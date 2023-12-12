@@ -46,7 +46,7 @@ func HTTPStatusCode(request *model.Request, response *http.Response, body []byte
 
 // ResponseJSON 返回数据结构体
 type ResponseJSON struct {
-	Code int         `json:"code"`
+	Code string      `json:"code"`
 	Msg  string      `json:"msg"`
 	Data interface{} `json:"data"`
 }
@@ -62,9 +62,8 @@ func HTTPJson(request *model.Request, response *http.Response, body []byte) (cod
 			code = model.ParseError
 			fmt.Printf("请求结果 json.Unmarshal err:%v", err)
 		} else {
-			code = responseJSON.Code
 			// body 中code返回200为返回数据成功
-			if responseJSON.Code == request.Code {
+			if responseJSON.Code == "0" {
 				isSucceed = true
 			}
 		}

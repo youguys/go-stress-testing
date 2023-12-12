@@ -2,6 +2,7 @@
 package golink
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"fmt"
@@ -46,7 +47,7 @@ func sendList(chanID uint64, requestList []*model.Request) (isSucceed bool, errC
 	contentLength int64) {
 	errCode = model.HTTPOk
 	for _, request := range requestList {
-	    temp := request
+		temp := request
 		succeed, code, u, length := send(chanID, temp)
 		isSucceed = succeed
 		errCode = code
@@ -73,10 +74,14 @@ func send(chanID uint64, request *model.Request) (bool, int, uint64, int64) {
 	)
 	newRequest := getRequest(request)
 
-	resp, requestTime, err = client.HTTPRequest(chanID, newRequest)
+	resp, requestTime, err, body = client.HTTPRequest(chanID, newRequest)
 	if err != nil {
 		errCode = model.RequestErr // 请求错误
-	} else {
+		return isSucceed, errCode, requestTime, contentLength
+	}
+
+	//http3请求的响应体需要特殊获取，其它方式获取会有问题
+	if request.HttpVersion != "3" {
 		body, err = getBody(resp)
 		if err != nil {
 			errCode = model.ParseError
@@ -85,8 +90,11 @@ func send(chanID uint64, request *model.Request) (bool, int, uint64, int64) {
 			// 验证请求是否成功
 			errCode, isSucceed = newRequest.GetVerifyHTTP()(newRequest, resp, body)
 		}
+	} else {
+		errCode, isSucceed = newRequest.GetVerifyHTTP()(newRequest, resp, body)
 	}
 	return isSucceed, errCode, requestTime, contentLength
+
 }
 
 // getBody 获取响应数据
@@ -104,9 +112,13 @@ func getBody(response *http.Response) (body []byte, err error) {
 	default:
 		reader = response.Body
 	}
-	body, err = io.ReadAll(reader)
+
+	jsonbody := &bytes.Buffer{}
+	_, err = io.Copy(jsonbody, reader)
+	//body, err = io.ReadAll(reader)
 	defer func() {
 		_ = response.Body.Close()
 	}()
-	return body, err
+	body = jsonbody.Bytes()
+	return body, nil
 }

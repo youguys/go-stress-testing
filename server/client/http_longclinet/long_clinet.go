@@ -7,8 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"crypto/x509"
+	"fmt"
 	"github.com/link1st/go-stress-testing/model"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
+	"io"
 )
 
 var (
@@ -41,10 +46,12 @@ func setClient(i uint64, request *model.Request) *http.Client {
 
 // createLangHttpClient 初始化长连接客户端参数
 func createLangHttpClient(request *model.Request) *http.Client {
-	tr := &http.Transport{}
-	if request.HTTP2 {
+	var roundTri http.RoundTripper
+
+	switch request.HttpVersion {
+	case "2":
 		// 使用真实证书 验证证书 模拟真实请求
-		tr = &http.Transport{
+		tr := &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
@@ -55,9 +62,31 @@ func createLangHttpClient(request *model.Request) *http.Client {
 			TLSClientConfig:     &tls.Config{InsecureSkipVerify: false},
 		}
 		_ = http2.ConfigureTransport(tr)
-	} else {
+		roundTri = tr
+		break
+	case "3":
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			fmt.Println("请求失败:", err)
+		}
+		var keyLog io.Writer
+		var qconf quic.Config
+		//用短连接发送请求，避免长链接带来的不稳定
+		qconf.KeepAlivePeriod = 0
+		roundTrpper := &http3.RoundTripper{
+			TLSClientConfig: &tls.Config{
+				RootCAs:            pool,
+				InsecureSkipVerify: true,
+				KeyLogWriter:       keyLog,
+			},
+			QuicConfig: &qconf,
+		}
+		defer roundTrpper.Close()
+		roundTri = roundTrpper
+		break
+	default:
 		// 跳过证书验证
-		tr = &http.Transport{
+		roundTri = &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
@@ -69,6 +98,6 @@ func createLangHttpClient(request *model.Request) *http.Client {
 		}
 	}
 	return &http.Client{
-		Transport: tr,
+		Transport: roundTri,
 	}
 }

@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/golang/protobuf v1.5.3
+	github.com/quic-go/quic-go v0.34.0 // indirect
 	golang.org/x/net v0.17.0
 	golang.org/x/text v0.13.0
 	google.golang.org/grpc v1.56.3

@@ -39,7 +39,7 @@ var (
 	body               = ""      // HTTP POST方式传送数据
 	maxCon             = 1       // 单个连接最大请求数
 	code               = 200     // 成功状态码
-	http2              = false   // 是否开http2.0
+	httpversion        = "1"     //  http的版本，http1, http2, http3
 	keepalive          = false   // 是否开启长连接
 	cpuNumber          = 1       // CUP 核数，默认为一核，一般场景下单核已经够用了
 	timeout     int64  = 0       // 超时时间，默认不设置
@@ -56,7 +56,7 @@ func init() {
 	flag.StringVar(&body, "data", body, "HTTP POST方式传送数据")
 	flag.IntVar(&maxCon, "m", maxCon, "单个host最大连接数")
 	flag.IntVar(&code, "code", code, "请求成功的状态码")
-	flag.BoolVar(&http2, "http2", http2, "是否开http2.0")
+	flag.StringVar(&httpversion, "httpversion", httpversion, "http协议的版本")
 	flag.BoolVar(&keepalive, "k", keepalive, "是否开启长连接")
 	flag.IntVar(&cpuNumber, "cpuNumber", cpuNumber, "CUP 核数，默认为一核")
 	flag.Int64Var(&timeout, "timeout", timeout, "超时时间 单位 秒,默认不设置")
@@ -78,7 +78,8 @@ func main() {
 		return
 	}
 	debug := strings.ToLower(debugStr) == "true"
-	request, err := model.NewRequest(requestURL, verify, code, 0, debug, path, headers, body, maxCon, http2, keepalive)
+
+	request, err := model.NewRequest(requestURL, verify, code, 0, debug, path, headers, body, maxCon, httpversion, keepalive)
 	if err != nil {
 		fmt.Printf("参数不合法 %v \n", err)
 		return

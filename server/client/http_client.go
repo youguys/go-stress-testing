@@ -12,7 +12,14 @@ import (
 	httplongclinet "github.com/link1st/go-stress-testing/server/client/http_longclinet"
 	"golang.org/x/net/http2"
 
+	"bytes"
+	"crypto/x509"
+	"fmt"
+
 	"github.com/link1st/go-stress-testing/helper"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"io"
 )
 
 // logErr err
@@ -24,7 +31,7 @@ var logErr = log.New(os.Stderr, "", 0)
 // body 请求的body
 // headers 请求头信息
 // timeout 请求超时时间
-func HTTPRequest(chanID uint64, request *model.Request) (resp *http.Response, requestTime uint64, err error) {
+func HTTPRequest(chanID uint64, request *model.Request) (resp *http.Response, requestTime uint64, err error, body1 []byte) {
 	method := request.Method
 	url := request.URL
 	body := request.GetBody()
@@ -64,24 +71,65 @@ func HTTPRequest(chanID uint64, request *model.Request) (resp *http.Response, re
 		return
 	} else {
 		req.Close = true
-		tr := &http.Transport{}
-		if request.HTTP2 {
+		var roundTri http.RoundTripper
+
+		switch request.HttpVersion {
+		case "2":
 			// 使用真实证书 验证证书 模拟真实请求
-			tr = &http.Transport{
+			tr := &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 			}
 			if err = http2.ConfigureTransport(tr); err != nil {
 				return
 			}
-		} else {
+			roundTri = tr
+			break
+		case "3":
+			pool, err1 := x509.SystemCertPool()
+			if err1 != nil {
+				logErr.Println("pool初始化失败:", err)
+			}
+			var keyLog io.Writer
+			var qconf quic.Config
+			//用短连接发送请求，避免长链接带来的不稳定
+			qconf.KeepAlivePeriod = 0
+			tr := &http3.RoundTripper{
+				TLSClientConfig: &tls.Config{
+					RootCAs:            pool,
+					InsecureSkipVerify: true,
+					KeyLogWriter:       keyLog,
+				},
+				QuicConfig: &qconf,
+			}
+			defer tr.Close()
+			hclient := &http.Client{
+				Transport: tr,
+			}
+			startTime := time.Now()
+			resp, err = hclient.Post(url, "application/json", body)
+			if err != nil {
+				logErr.Println("请求失败:", err)
+				return
+			}
+			requestTime = uint64(helper.DiffNano(startTime))
+			defer resp.Body.Close()
+			respBody := &bytes.Buffer{}
+			_, err1 = io.Copy(respBody, resp.Body)
+			if err1 != nil {
+				fmt.Println("body解析失败:", err1)
+			}
+			body1 = respBody.Bytes()
+			return
+		default:
 			// 跳过证书验证
-			tr = &http.Transport{
+			tr := &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}
+			roundTri = tr
 		}
 
 		client = &http.Client{
-			Transport: tr,
+			Transport: roundTri,
 			Timeout:   timeout,
 		}
 	}
@@ -91,7 +139,6 @@ func HTTPRequest(chanID uint64, request *model.Request) (resp *http.Response, re
 	requestTime = uint64(helper.DiffNano(startTime))
 	if err != nil {
 		logErr.Println("请求失败:", err)
-
 		return
 	}
 	return

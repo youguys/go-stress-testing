@@ -18,7 +18,8 @@ const (
 	// RequestErr 请求错误
 	RequestErr = 509
 	// ParseError 解析错误
-	ParseError = 510 // 解析错误
+	ParseError  = 510 // 解析错误
+	ReadTimeout = 520 // 读取响应超时
 )
 
 // 支持协议
@@ -30,6 +31,7 @@ const (
 	// FormTypeGRPC grpc 协议
 	FormTypeGRPC   = "grpc"
 	FormTypeRadius = "radius"
+	FormTypeUDPSPA = "udpspa"
 )
 
 // 校验函数
@@ -74,18 +76,18 @@ type VerifyWebSocket func(request *Request, seq string, msg []byte) (code int, i
 
 // Request 请求数据
 type Request struct {
-	URL       string            // URL
-	Form      string            // http/webSocket/tcp
-	Method    string            // 方法 GET/POST/PUT
-	Headers   map[string]string // Headers
-	Body      string            // body
-	Verify    string            // 验证的方法
-	Timeout   time.Duration     // 请求超时时间
-	Debug     bool              // 是否开启Debug模式
-	MaxCon    int               // 每个连接的请求数
-	HTTP2     bool              // 是否使用http2.0
-	Keepalive bool              // 是否开启长连接
-	Code      int               // 验证的状态码
+	URL         string            // URL
+	Form        string            // http/webSocket/tcp
+	Method      string            // 方法 GET/POST/PUT
+	Headers     map[string]string // Headers
+	Body        string            // body
+	Verify      string            // 验证的方法
+	Timeout     time.Duration     // 请求超时时间
+	Debug       bool              // 是否开启Debug模式
+	MaxCon      int               // 每个连接的请求数
+	HttpVersion string            // http的版本1，2，3
+	Keepalive   bool              // 是否开启长连接
+	Code        int               // 验证的状态码
 }
 
 // GetBody 获取请求数据
@@ -124,7 +126,7 @@ func (r *Request) GetVerifyWebSocket() VerifyWebSocket {
 // path curl文件路径 http接口压测，自定义参数设置
 func NewRequest(url string, verify string, code int, timeout time.Duration, debug bool, path string,
 	reqHeaders []string,
-	reqBody string, maxCon int, http2 bool, keepalive bool) (request *Request, err error) {
+	reqBody string, maxCon int, httpversion string, keepalive bool) (request *Request, err error) {
 	var (
 		method  = "GET"
 		headers = make(map[string]string)
@@ -164,6 +166,9 @@ func NewRequest(url string, verify string, code int, timeout time.Duration, debu
 	} else if strings.HasPrefix(url, "radius://") {
 		form = FormTypeRadius
 		url = url[9:]
+	} else if strings.HasPrefix(url, "udp://") {
+		form = FormTypeUDPSPA
+		url = url[6:]
 	} else {
 		form = FormTypeHTTP
 		url = fmt.Sprintf("http://%s", url)
@@ -201,18 +206,18 @@ func NewRequest(url string, verify string, code int, timeout time.Duration, debu
 		timeout = 30 * time.Second
 	}
 	request = &Request{
-		URL:       url,
-		Form:      form,
-		Method:    strings.ToUpper(method),
-		Headers:   headers,
-		Body:      body,
-		Verify:    verify,
-		Timeout:   timeout,
-		Debug:     debug,
-		MaxCon:    maxCon,
-		HTTP2:     http2,
-		Keepalive: keepalive,
-		Code:      code,
+		URL:         url,
+		Form:        form,
+		Method:      strings.ToUpper(method),
+		Headers:     headers,
+		Body:        body,
+		Verify:      verify,
+		Timeout:     timeout,
+		Debug:       debug,
+		MaxCon:      maxCon,
+		HttpVersion: httpversion,
+		Keepalive:   keepalive,
+		Code:        code,
 	}
 	return
 }
@@ -243,7 +248,7 @@ func (r *Request) Print() {
 		r.Headers)
 	result = fmt.Sprintf("%s data:%v \n", result, r.Body)
 	result = fmt.Sprintf("%s verify:%s \n timeout:%s \n debug:%v \n", result, r.Verify, r.Timeout, r.Debug)
-	result = fmt.Sprintf("%s http2.0：%v \n keepalive：%v \n maxCon:%v ", result, r.HTTP2, r.Keepalive, r.MaxCon)
+	result = fmt.Sprintf("%s httpversion：%v \n keepalive：%v \n maxCon:%v ", result, r.HttpVersion, r.Keepalive, r.MaxCon)
 	fmt.Println(result)
 	return
 }
